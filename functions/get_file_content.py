@@ -4,7 +4,6 @@ from config import MAX_CHARS
 def get_file_content(working_directory, file_path):
     abs_work_w_sep = os.path.abspath(working_directory) if os.path.abspath(working_directory).endswith(os.sep) else os.path.abspath(working_directory) + os.sep
     path = os.path.join(abs_work_w_sep, file_path)
-    print(path)
     # Error handling
     if not path.startswith(abs_work_w_sep) and path != os.path.abspath(working_directory):
        return f'Error: Cannot read "{file_path}" as it is outside the permitted working directory'
