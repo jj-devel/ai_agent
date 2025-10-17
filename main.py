@@ -8,6 +8,8 @@ from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_files_content
 from functions.write_file import schema_write_file
 from functions.run_python_file import schema_run_python_file
+from functions.call_function import call_function
+from call_model_with_retry import call_model_with_retry
 
 # Check for required arguments
 if len(sys.argv) < 1:
@@ -27,6 +29,7 @@ When a user asks a question or makes a request, make a function call plan. You c
 - Write or overwrite files
 
 All paths you provide should be relative to the working directory. You do not need to specify the working directory in your function calls as it is automatically injected for security reasons.
+Prefer calling a single tool to answer the user’s request. Do not ask clarifying questions when a reasonable default exists.
 """
 
 # Functions that the AI can use
@@ -50,11 +53,10 @@ messages = [
 ]
 
 # AI model creation
-output = client.models.generate_content(
-model="gemini-2.0-flash-001", 
-contents=messages, 
-config=types.GenerateContentConfig(tools=[available_functions], system_instruction=SYSTEM_PROMPT), 
-)
+output = call_model_with_retry(client, messages, available_functions, SYSTEM_PROMPT)
+if output is None:
+    print("The model is overloaded. Please try again shortly.")
+    sys.exit(0)
 
 # Extra information for the {--verbose} argument
 verbose_arg = f"""User prompt: {prompt}
@@ -62,15 +64,26 @@ Prompt tokens: {output.usage_metadata.prompt_token_count}
 Response tokens: {output.usage_metadata.candidates_token_count}
 """
 
+is_verbose = "--verbose" in str(sys.argv)
+
 def main():
     # Verbose
-    if "--verbose" in str(sys.argv):
+    if is_verbose:
         print(verbose_arg)
     # Question
     if output.function_calls == None:
-        print(f"Output: {output.text}")
-    else: 
-        print(f"Calling function: {output.function_calls[0].name}({output.function_calls[0].args})")
+        print(output.text)
+        return
+    else:
+        fc = output.function_calls[0]
+        fc_result = call_function(fc, verbose=is_verbose)
+        resp = fc_result.parts[0].function_response.response
+        if not resp:
+            raise RuntimeError("Missing function response")
+        if is_verbose:
+            print(f"-> {resp}")
+        else:
+            print(resp)
 
 if __name__ == "__main__":
     main()
